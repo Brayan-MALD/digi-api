@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Gestión de Digimon</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8f9fa; }
+    .card { border-radius: 12px; }
+    .digimon-img {
+      width: 100%;
+      height: 180px;
+      object-fit: contain;
+      background: #fff;
+      padding: 10px;
+    }
+    .no-image {
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:180px;
+      background:#eef2f7;
+      color:#555;
+      font-weight:600;
+    }
+  </style>
+</head>
+<body>
+  <div class="container py-5">
+    <h1 class="text-center mb-4">🐉 Gestión de Digimon</h1>
+
+    <!-- Formulario -->
+    <div class="card shadow-sm p-4 mb-4">
+      <h4 id="formTitle">Agregar Digimon</h4>
+      <form id="digimonForm" class="row g-3">
+        <input type="hidden" id="digimonId">
+        <div class="col-md-3">
+          <input type="text" id="nombre" class="form-control" placeholder="Nombre" required>
+        </div>
+        <div class="col-md-2">
+          <input type="number" id="nivel" class="form-control" placeholder="Nivel" required>
+        </div>
+        <div class="col-md-3">
+          <input type="text" id="tipo" class="form-control" placeholder="Tipo" required>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button type="submit" class="btn btn-success" id="submitBtn">Agregar</button>
+        </div>
+        <div class="col-md-2 d-grid">
+          <button type="button" class="btn btn-secondary d-none" id="cancelBtn">Cancelar</button>
+        </div>
+      </form>
+    </div>
+
+    <!-- Buscador -->
+    <div class="input-group mb-4">
+      <span class="input-group-text">🔍</span>
+      <input type="text" id="searchInput" class="form-control" placeholder="Buscar Digimon por nombre o tipo...">
+    </div>
+
+    <!-- Lista -->
+    <h3 class="mb-3">Lista de Digimon</h3>
+    <div id="digimonList" class="row g-4"></div>
+  </div>
+
+  <script>
+    const API_URL = "http://localhost:3000/digimons";
+    let digimonsData = [];
+
+    // ----- FETCH y render dinámico con createElement (no innerHTML con datos) -----
+    async function fetchDigimons() {
+      try {
+        const res = await fetch(API_URL);
+        digimonsData = await res.json();
+        renderDigimons(digimonsData);
+      } catch (err) {
+        console.error("Error al obtener digimons:", err);
+        document.getElementById('digimonList').innerHTML = '<p class="text-danger">Error al cargar los Digimon (mira la consola).</p>';
+      }
+    }
+
+    function renderDigimons(digimons) {
+      const list = document.getElementById("digimonList");
+      list.innerHTML = "";
+      if (!digimons || digimons.length === 0) {
+        list.innerHTML = `<p class="text-center text-muted">No se encontraron Digimon 😢</p>`;
+        return;
+      }
+
+      digimons.forEach(d => {
+        const col = document.createElement("div");
+        col.className = "col-md-3";
+
+        const card = document.createElement("div");
+        card.className = "card shadow-sm h-100";
+        // Guardamos datos en data-attributes para editar fácilmente
+        card.dataset.id = d.id;
+        card.dataset.nombre = d.nombre ?? "";
+        card.dataset.nivel = d.nivel ?? "";
+        card.dataset.tipo = d.tipo ?? "";
+        card.dataset.imagen = d.imagen ?? "";
+
+        // Imagen o fallback
+        if (d.imagen) {
+          const img = document.createElement("img");
+          img.src = d.imagen;
+          img.alt = d.nombre || "Digimon";
+          img.className = "digimon-img";
+          card.appendChild(img);
+        } else {
+          const noImg = document.createElement("div");
+          noImg.className = "no-image";
+          noImg.textContent = "Sin imagen";
+          card.appendChild(noImg);
+        }
+
+        const body = document.createElement("div");
+        body.className = "card-body text-center";
+
+        const title = document.createElement("h5");
+        title.className = "card-title";
+        title.textContent = d.nombre || "-";
+        body.appendChild(title);
+
+        const p = document.createElement("p");
+        p.className = "card-text";
+        p.innerHTML = `<strong>Tipo:</strong> ${escapeHtml(d.tipo || "-")} <br>
+                       <strong>Nivel:</strong> ${escapeHtml(String(d.nivel || "-"))} <br>`;
+        const badge = document.createElement("span");
+        badge.className = "badge bg-info";
+        badge.textContent = `Versión ${d.version ?? 1}`;
+        p.appendChild(document.createElement("br"));
+        p.appendChild(badge);
+        body.appendChild(p);
+
+        // Botones
+        const btnEdit = document.createElement("button");
+        btnEdit.className = "btn btn-warning btn-sm me-2 btn-edit";
+        btnEdit.type = "button";
+        btnEdit.dataset.id = d.id;
+        btnEdit.textContent = "Editar";
+
+        const btnDelete = document.createElement("button");
+        btnDelete.className = "btn btn-danger btn-sm btn-delete";
+        btnDelete.type = "button";
+        btnDelete.dataset.id = d.id;
+        btnDelete.textContent = "Eliminar";
+
+        body.appendChild(btnEdit);
+        body.appendChild(btnDelete);
+
+        card.appendChild(body);
+        col.appendChild(card);
+        list.appendChild(col);
+      });
+    }
+
+    // Función simple para evitar inyección en textos
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    // ----- Delegación de eventos para editar/eliminar -----
+    document.getElementById("digimonList").addEventListener("click", async (e) => {
+      const editBtn = e.target.closest(".btn-edit");
+      const delBtn = e.target.closest(".btn-delete");
+
+      if (editBtn) {
+        const id = editBtn.dataset.id;
+        const card = editBtn.closest(".card");
+        // Rellenar formulario desde data-attributes del card
+        document.getElementById("digimonId").value = card.dataset.id || id;
+        document.getElementById("nombre").value = card.dataset.nombre || "";
+        document.getElementById("nivel").value = card.dataset.nivel || "";
+        document.getElementById("tipo").value = card.dataset.tipo || "";
+
+        document.getElementById("formTitle").textContent = "Editar Digimon";
+        document.getElementById("submitBtn").textContent = "Actualizar";
+        document.getElementById("cancelBtn").classList.remove("d-none");
+        return;
+      }
+
+      if (delBtn) {
+        const id = delBtn.dataset.id;
+        if (!id) return;
+        if (!confirm("¿Seguro que quieres eliminar este Digimon?")) return;
+        try {
+          const res = await fetch(`${API_URL}/${encodeURIComponent(id)}`, { method: "DELETE" });
+          if (!res.ok) throw new Error("No se pudo eliminar");
+          await fetchDigimons();
+        } catch (err) {
+          console.error("Error al eliminar:", err);
+          alert("Error al eliminar (mira la consola).");
+        }
+      }
+    });
+
+    // ----- Form submit (crear / editar) -----
+    document.getElementById("digimonForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const id = document.getElementById("digimonId").value;
+      const nombre = document.getElementById("nombre").value.trim();
+      const nivel = document.getElementById("nivel").value.trim();
+      const tipo = document.getElementById("tipo").value.trim();
+
+      if (!nombre || !tipo || nivel === "") {
+        alert("Completa nombre, tipo y nivel.");
+        return;
+      }
+
+      try {
+        if (id) {
+          // EDITAR
+          const res = await fetch(`${API_URL}/${encodeURIComponent(id)}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nombre, nivel, tipo })
+          });
+          if (!res.ok) throw new Error("Error al actualizar");
+          resetForm();
+        } else {
+          // AGREGAR
+          const res = await fetch(API_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ nombre, nivel, tipo })
+          });
+          if (!res.ok) throw new Error("Error al crear");
+        }
+        e.target.reset();
+        await fetchDigimons();
+      } catch (err) {
+        console.error(err);
+        alert("Ocurrió un error (ver consola).");
+      }
+    });
+
+    // Cancelar edición
+    document.getElementById("cancelBtn").addEventListener("click", () => resetForm());
+
+    function resetForm() {
+      document.getElementById("digimonId").value = "";
+      document.getElementById("digimonForm").reset();
+      document.getElementById("formTitle").textContent = "Agregar Digimon";
+      document.getElementById("submitBtn").textContent = "Agregar";
+      document.getElementById("cancelBtn").classList.add("d-none");
+    }
+
+    // Buscar en tiempo real por nombre o tipo
+    document.getElementById("searchInput").addEventListener("input", (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = digimonsData.filter(d =>
+        String(d.nombre || "").toLowerCase().includes(q) ||
+        String(d.tipo || "").toLowerCase().includes(q)
+      );
+      renderDigimons(filtered);
+    });
+
+    // Inicial
+    fetchDigimons();
+  </script>
+</body>
+</html>
